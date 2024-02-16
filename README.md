@@ -1,5 +1,5 @@
 # Advanced NLP
-As data set we adopted the one provided by: [https://spacy.io/universe/project/self-attentive-parser](https://spacy.io/models/en) \
-TODO\
-`$ python -m spacy download en_core_web_sm`
+The code notebook for assignment 1, can be found in 'Assignment-1' folder.
+To get all the the dependencies run the following code in terminal:
+```sh pip install -r requirements. txt
 
