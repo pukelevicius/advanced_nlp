@@ -62,4 +62,7 @@ def prepare_data(file_path):
     """
     df = read_conll(file_path)
     df = conll_transform(df)
+    df = bigram_features(df)
+    df = trigram_features(df)
+    # df = ner(df)
     return df
