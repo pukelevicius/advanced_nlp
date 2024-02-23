@@ -14,7 +14,7 @@ def read_conll(file_path):
     data = []
     max_cols = 0
     sent_id = ''
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r',encoding='utf-8') as f:
         lines = f.readlines()
         for line in lines:
             # grab the sentence id (useful for grouping sentences)
