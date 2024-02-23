@@ -120,7 +120,7 @@ def calculate_metrics(start_label, end_label, y_dev_encoded_array, y_pred):
     """
     Calculate metrics for the classification task
     For labels 0 and 1: is_token_argument (argument identification)
-    For labels 2 to 18: argument_label (argument classification)
+    For labels 2 to 30: argument_label (argument classification)
     """
     weighted_precision_sum = 0
     weighted_recall_sum = 0
