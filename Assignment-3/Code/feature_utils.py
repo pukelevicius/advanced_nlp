@@ -112,3 +112,21 @@ def get_ner_tags(df):
     grouped = df.groupby('sent_id').apply(align_and_extract)
     grouped['ner'] = grouped['ner'].fillna('O')  # Fill remaining NaNs with 'O'
     return grouped.reset_index(drop=True)
+
+def extract_predicate_argument_feats(df):
+    """
+    Fuction to extract argument and predicate features from transformed
+    conll format data.
+    
+    params:
+    df: Dataframe of transformed conll data
+    """
+    # feature to indicate if the token is a predicate; maybe redundant
+    df['is_token_predicate'] = (df['predicate'] != '_').astype(int)
+    # feature for classification task 1: argument identification
+    df['is_token_argument'] = (df['argument_type'].str.startswith('ARG')).astype(int)
+    # feature for classification task 2: argument classification
+    df['argument_label'] = df['argument_type'].apply(lambda x: x if x.startswith('ARG') else 'O')
+    
+    return df
+

@@ -1,11 +1,15 @@
 import pandas as pd
 import numpy as np
+import json
+import ast
+
 from sklearn.metrics import classification_report, precision_recall_fscore_support
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from scipy.sparse import hstack, vstack
 import re
 from feature_utils import *
+
 
 def read_conll(file_path):
     """
@@ -149,3 +153,178 @@ def calculate_metrics(start_label, end_label, y_dev_encoded_array, y_pred):
     macro_avg_recall = np.mean(recalls)
     macro_avg_f1 = np.mean(f1_scores)
     return weighted_avg_precision, weighted_avg_recall, weighted_avg_f1, macro_avg_precision, macro_avg_recall, macro_avg_f1
+
+
+def save_dict_to_json(data, filename):
+    """
+    Save a dictionary to a JSON file. This function handles numpy arrays in the dictionary by converting
+    them to lists before saving.
+    
+    :param data: Dictionary to save.
+    :param filename: File path for the JSON file to save the dictionary in.
+    """
+    # Convert numpy arrays to lists
+    data_to_save = {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in data.items()}
+    # Convert nested dictionaries that may have numpy arrays
+    for k, v in data_to_save.items():
+        if isinstance(v, dict):
+            data_to_save[k] = {k1: (v1.tolist() if isinstance(v1, np.ndarray) else v1) for k1, v1 in v.items()}
+    
+    with open(filename, 'w') as f:
+        json.dump(data_to_save, f, indent=4)
+        
+        f.close()
+        
+
+def calculate_classification_metrics(preds, true_labels):
+    """
+    Calculate precision, recall, f1 score, and macro average metrics for classification results.
+    
+    Parameters:
+    preds: List of list of predictions from token classification
+    true_labels: List of list of true labels from token classification
+    return: 
+    Dictionary with precision, recall, f1 score for each class and macro averages
+    """
+    # Flatten the predictions and true labels lists
+    preds_flat = [p for sublist in preds for p in sublist]
+    true_flat = [t for sublist in true_labels for t in sublist]
+    
+    # Extract unique classes
+    classes = sorted(set(true_flat))
+    
+    # Calculate precision, recall, and F1 score for each class
+    precision, recall, f1, _ = precision_recall_fscore_support(true_flat, preds_flat, labels=classes)
+    
+    # Calculate macro averages
+    precision_macro = np.mean(precision)
+    recall_macro = np.mean(recall)
+    f1_macro = np.mean(f1)
+    
+    # Create a dictionary to store the metrics
+    metrics = {
+        'precision': precision,
+        'recall': recall,
+        'f1': f1,
+        'macro': {
+            'precision_macro': precision_macro,
+            'recall_macro': recall_macro,
+            'f1_macro': f1_macro
+        }
+    }
+    
+    return metrics
+
+
+def fix_lists(formatted_df):
+    """
+    fixing columns of lists where they were read as strings.
+    """
+    columns_to_convert = ['sentences', 'is_argument', 'arg_labels']
+
+    for column in columns_to_convert:
+        formatted_df[column] = formatted_df[column].apply(ast.literal_eval)
+        
+    return formatted_df
+
+
+
+
+
+def aggregate_subtoken_logits(tokenized_data, predictions):
+    """
+    Aggregates subtoken logits to word level for each example in a tokenized dataset.
+
+    Parameters:
+    tokenized_data: A list of tokenized data, where each list is a dictionary containing
+                               'sentence' and 'word_ids'.
+    predictions: A list of subtoken-level predictions, corresponding to the tokenized examples.
+                        Each element in the list is an array of logits for an example.
+
+    Returns:
+    list: A list of word-level logits for each example. Each element in the list is an array of aggregated logits,
+          corresponding to the words in the example.
+    """
+    word_level_logits = []
+
+    for index, data in enumerate(tokenized_data):
+        tokens = data['sentence']
+        word_ids = data['word_ids']
+        subtoken_logits = np.array(predictions[index])
+        current_word_id = None
+        current_word_logits = None
+        sentence_logits = []
+
+        for subtoken_index, word_id in enumerate(word_ids):
+            if word_id is not None and word_id != current_word_id:
+                if current_word_logits is not None:
+                    sentence_logits.append(current_word_logits)
+
+                current_word_id = word_id
+                current_word_logits = subtoken_logits[subtoken_index].copy()
+            elif word_id is not None:
+                current_word_logits += subtoken_logits[subtoken_index]
+
+        if current_word_logits is not None:
+            sentence_logits.append(current_word_logits)
+
+        word_level_logits.append(np.array(sentence_logits))
+
+    return word_level_logits
+
+def align_labels_with_predictions(tokenized_data):
+    """
+    Aligns original labels with their corresponding word-level predictions in tokenized data.
+
+    Parameters:
+    tokenized_data: A list of tokenized examples, where each example is a dictionary containing
+                           'word_ids' and 'labels'. 'word_ids' should be a list of word IDs for each subtoken,
+                           and 'labels' should be a list of labels for each subtoken.
+
+    Returns:
+    list: A list where each element is a list of aligned labels for the words in the corresponding tokenized example.
+    """
+    aligned_labels = []
+
+    for item in tokenized_data:
+        # Extract word IDs and labels, ignoring special tokens at the start and end
+        word_ids = item['word_ids'][1:-1]
+        original_labels = item['labels'][1:-1]
+
+        # Aggregate labels based on word IDs
+        current_word_id = None
+        word_labels = []
+
+        for word_id, label in zip(word_ids, original_labels):
+            if word_id is not None and word_id != current_word_id:
+                # Start of a new word
+                word_labels.append(label)
+                current_word_id = word_id
+
+        aligned_labels.append(word_labels)
+
+    return aligned_labels
+
+def remove_special_token_indexes(predictions, labels, label_list):
+    """
+    removes special token indexes from predictions and gold labels
+    
+    params:
+    predictions: list of predictions.
+    labels: list of gold labels.
+    label_list: list of unique labels
+    """
+
+    # Remove ignored index (special tokens)
+    true_predictions = [
+        [label_list[p] for (p, l) in zip(prediction, label) if l != -100]
+        for prediction, label in zip(predictions, labels)
+    ]
+    true_labels = [
+        [label_list[l] for (p, l) in zip(prediction, label) if l != -100]
+        for prediction, label in zip(predictions, labels)
+    ]
+
+    return true_predictions, true_labels
+
+
