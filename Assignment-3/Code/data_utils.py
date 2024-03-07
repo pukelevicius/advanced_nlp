@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import json
 import ast
-
+import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, precision_recall_fscore_support
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -327,4 +327,41 @@ def remove_special_token_indexes(predictions, labels, label_list):
 
     return true_predictions, true_labels
 
+def plot_results(path = None):
+    '''
+    plot the results of the two models
 
+    parms:
+    path: saves the plot to the path
+    '''
+    baseline_results_path = 'Assignment-3/Results/distilbert-base-uncased-advanced-argument-classificationresults-final.json'
+    advanced_results_path = 'Assignment-3/Results/distilbert-base-uncased-baseline-argument-classificationresults-final.json'
+
+    with open(baseline_results_path, 'r') as file:
+        baseline_results = json.load(file)
+
+    with open(advanced_results_path, 'r') as file:
+        advanced_results = json.load(file)
+
+    labels = baseline_results['classes']
+    baseline_f1 = baseline_results['f1']
+    advanced_f1 = advanced_results['f1']
+
+    f1_differences = [advanced - baseline for advanced, baseline in zip(advanced_f1, baseline_f1)]
+
+    labels, f1_differences
+
+    plt.figure(figsize=(14, 8))
+    plt.barh(labels, f1_differences, color='skyblue')
+    plt.xlabel('Difference in F1 Score')
+    plt.title('Difference in F1 Score per Label Between Two Models')
+    plt.axvline(x=0, color='grey', lw=1.5, linestyle='--')
+    plt.tight_layout()
+
+    # Show plot 
+    plt.xticks(rotation=45)
+    plt.show()
+
+    # Save plot
+    if path: 
+        plt.savefig(path)
