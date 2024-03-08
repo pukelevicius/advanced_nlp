@@ -334,8 +334,8 @@ def plot_results(path = None):
     parms:
     path: saves the plot to the path
     '''
-    baseline_results_path = 'Assignment-3/Results/distilbert-base-uncased-advanced-argument-classificationresults-final.json'
-    advanced_results_path = 'Assignment-3/Results/distilbert-base-uncased-baseline-argument-classificationresults-final.json'
+    baseline_results_path = '..\Results\distilbert-base-uncased-baseline-argument-classificationresults-final.json'
+    advanced_results_path = '..\Results\distilbert-base-uncased-advanced-argument-classificationresults-final.json'
 
     with open(baseline_results_path, 'r') as file:
         baseline_results = json.load(file)
@@ -360,8 +360,9 @@ def plot_results(path = None):
 
     # Show plot 
     plt.xticks(rotation=45)
-    plt.show()
 
     # Save plot
     if path: 
-        plt.savefig(path)
+        plt.savefig(path + 'f1_differences.png')
+
+    plt.show()
