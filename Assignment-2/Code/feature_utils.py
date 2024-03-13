@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import spacy
 nlp = spacy.load("en_core_web_sm")
 
@@ -79,6 +80,40 @@ def morph_features(df):
     df['pron_type'] = df['morph_type'].apply(lambda x: 1 if 'PronType=Prs' in x else (2 if 'PronType=Art' in x else (3 if 'PronType=Rel' in x else (4 if 'PronType=Int' in x else 0))))
     df['person'] = df['morph_type'].apply(lambda x: 1 if 'Person=1' in x else (2 if 'Person=2' in x else (3 if 'Person=3' in x else 0)))
     return df
+
+def distance_features(df):
+    """
+    Feature 1: Relative distance to the predicate
+        Add the distance from token to predicate feature to the dataframe
+        Values:
+        1: Close to predicate (within 2 tokens)
+        2: Medium distance to predicate (between 3 and 5 tokens)
+        3: Far from predicate (more than 5 tokens)
+    
+    Feature 2: Does the token appear before or after the predicate
+        Add the is_before_predicate feature to the dataframe
+        Values:
+        0: Appears after the predicate
+        1: Appears before the predicate
+    """
+    grouped = df.groupby('sent_id')
+    def distance_to_predicate(group):
+        predicate_token_id_series = group[group['predicate'] != '_']['token_id']
+        if not predicate_token_id_series.empty:
+            predicate_token_id = predicate_token_id_series.iloc[0]
+            predicate_token_id = int(predicate_token_id) if predicate_token_id != '_' else 0
+        else:
+            predicate_token_id = 0 # if there is no predicate, set the predicate token id to 0
+        group['token_id'] = pd.to_numeric(group['token_id'], errors='coerce')
+        group['distance_to_predicate'] = group['token_id'] - predicate_token_id
+        group['token_id'] = group['token_id'].astype(int)
+        return group
+    df = grouped.apply(distance_to_predicate).reset_index(drop=True)
+    df['is_before_predicate'] = (df['distance_to_predicate'] < 0).astype(int) # negative distance means the token appears before the predicate
+    df['distance_to_predicate'] = df['distance_to_predicate'].abs() # make the distance positive
+    df['distance_to_predicate'] = pd.cut(df['distance_to_predicate'], [0, 2, 5, np.inf], labels=[1, 2, 3]).fillna(1)
+    return df
+
 
 def get_ner_tags(df):
     """

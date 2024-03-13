@@ -72,7 +72,8 @@ def prepare_data(file_path):
     df = bigram_features(df)
     df = trigram_features(df)
     df = get_ner_tags(df)
-    df = morph_features(df)
+    #df = morph_features(df)
+    df = distance_features(df)
     # feature to indicate if the token is a predicate; maybe redundant
     df['is_token_predicate'] = (df['predicate'] != '_').astype(int)
     # feature for classification task 1: argument identification
