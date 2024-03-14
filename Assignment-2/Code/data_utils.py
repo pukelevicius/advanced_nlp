@@ -38,26 +38,22 @@ def conll_transform(df):
     """
     Transform the conll df by duplicating sentences with more than one predicate,
     such that each sentence has exactly one predicate.
+    Add a random number to the 'sent_id' column for each duplicated sentence.
     """
-    # regex to match predicate
     regex = '.*\.0\d'
-    # Group by sentence id and filter sentences with more than one predicate
     multi_predicate_sentence_ids = df.groupby('sent_id').filter(
         lambda x: x.iloc[:, 11].str.match(regex).sum() > 1)['sent_id'].unique()
-    # Accumulate duplicate rows to be concatenated in a list
     rows_to_concat = []
     for sent_id in multi_predicate_sentence_ids:
         sentence = df[df['sent_id'] == sent_id]
-        # get count of predicates
         predicate_count = sentence.iloc[:, 11].str.match(regex).sum()
-        # duplicate the sentence for each predicate and copy the 13th column to the 12th column and so on
         for i in range(1, predicate_count):
             sentence_copy = sentence.copy(deep=True)
             sentence_copy.iloc[:, 12] = sentence_copy.iloc[:, 12+i]
+            # Add a random number to the 'sent_id' column
+            sentence_copy['sent_id'] = sentence_copy['sent_id'] + '_' + str(i) # add the duplication number for easier grouping
             rows_to_concat.append(sentence_copy)
-    # Concatenate the original and duplicated sentences
     df = pd.concat([df] + rows_to_concat, ignore_index=True)
-    # drop columns starting from 13th
     df = df.drop(df.columns[13:], axis=1)
     df = df.rename(columns={11: 'predicate', 12: 'argument_type'})
     df = df.fillna('_')
@@ -72,8 +68,11 @@ def prepare_data(file_path):
     df = bigram_features(df)
     df = trigram_features(df)
     df = get_ner_tags(df)
-    #df = morph_features(df)
+    df = morph_features(df)
     df = distance_features(df)
+    df = extract_verb_type(df)
+    df = get_path_from_token_to_predicate(df)
+
     # feature to indicate if the token is a predicate; maybe redundant
     df['is_token_predicate'] = (df['predicate'] != '_').astype(int)
     # feature for classification task 1: argument identification
@@ -109,10 +108,14 @@ def process_data(data, vectorizer, numeric_features):
     token_trigram_count = vectorizer.transform(data['token_trigram'])
     pos_bigram_count = vectorizer.transform(data['POS_bigram'])
     pos_trigram_count = vectorizer.transform(data['POS_trigram'])
+    auxilary_count = vectorizer.transform(data['is_auxilary'])
+    main_verb_count = vectorizer.transform(data['is_main_verb'])
+    path_to_predicate_count = vectorizer.transform(data['path_to_predicate'])
     
     X = hstack([token_count, lemma_count, pos_count, universal_pos_count, dep_label_count, dep_rel_count, space_count,
                 predicate_count, ner_count, data['is_token_predicate'].values.reshape(-1, 1),
-                token_bigram_count, token_trigram_count, pos_bigram_count, pos_trigram_count, data[numeric_features].values])
+                token_bigram_count, token_trigram_count, pos_bigram_count, pos_trigram_count,
+                auxilary_count, main_verb_count, path_to_predicate_count, data[numeric_features].values])
     
     return X
 

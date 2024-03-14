@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import spacy
+from spacy.tokens import Doc
 nlp = spacy.load("en_core_web_sm")
 
 
@@ -147,3 +148,85 @@ def get_ner_tags(df):
     grouped = df.groupby('sent_id').apply(align_and_extract)
     grouped['ner'] = grouped['ner'].fillna('O')  # Fill remaining NaNs with 'O'
     return grouped.reset_index(drop=True)
+
+def extract_verb_type(df):
+    """
+    Extracts whether the token is an auxiliary or main verb based on the POS tag.
+
+    Parameters:
+    df : DataFrame to be transformed
+
+    Returns:
+    DataFrame with 'is_auxiliary' and 'is_main_verb' features
+    """
+    df['is_auxiliary'] = (df['POS'] == 'AUX').astype(int)
+    df['is_main_verb'] = (df['POS'] == 'VERB').astype(int)
+    return df
+
+def get_path_from_token_to_predicate(df):
+    """
+    Get the path from the token to the predicate
+    :param df: dataframe to be transformed
+    :return: dataframe with path_to_predicate feature
+    """
+    
+    def get_dependency_path(doc, token1, token2):
+        """
+        Get the shortest dependency path between two tokens in a spaCy Doc.
+        """
+        edges = []
+        for token in doc:
+            for child in token.children:
+                edges.append((token.i, child.i))
+        graph = {}
+        for start, end in edges:
+            graph.setdefault(start, []).append(end)
+            graph.setdefault(end, []).append(start)
+
+        queue = [(token1.i, [token1.i])]
+        seen = set()
+        while queue:
+            node, path = queue.pop(0)
+            if node == token2.i:
+                return path
+            if node in seen:
+                continue
+            seen.add(node)
+            for neighbor in graph.get(node, []):
+                queue.append((neighbor, path + [neighbor]))
+        return None
+    
+    def get_path(group):
+        predicate_token_id_series = group[group['predicate'] != '_']['token_id']
+        if not predicate_token_id_series.empty:
+            predicate_token_id = predicate_token_id_series.iloc[0]
+            predicate_token_id = int(predicate_token_id) if predicate_token_id != '_' else 0
+        else:
+            predicate_token_id = 0
+
+        sentence = ' '.join(group['token'].tolist())
+        doc = nlp(sentence)
+
+        paths = []
+        for token_id in group['token_id']:
+            token_id = int(float(token_id)) if token_id != '_' else 0
+
+            # Adjust token_id and predicate_token_id to be zero-based
+            token_id = max(min(token_id - 1, len(doc) - 1), 0)
+            predicate_token_id_adjusted = max(min(predicate_token_id - 1, len(doc) - 1), 0)
+
+            if predicate_token_id == 0 or token_id >= len(doc):  # Handle cases where there is no predicate or token index exceeds document length
+                paths.append([])
+                continue
+
+            path = get_dependency_path(doc, doc[token_id], doc[predicate_token_id_adjusted])
+            path = [doc[i] for i in path] if path else []
+            paths.append(path)
+        group['path_to_predicate'] = paths
+        return group 
+
+    df = df.groupby('sent_id', group_keys=False).apply(get_path).reset_index(drop=True)
+    return df
+
+
+
