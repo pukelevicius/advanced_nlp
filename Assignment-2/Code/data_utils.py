@@ -68,7 +68,7 @@ def prepare_data(file_path):
     df = bigram_features(df)
     df = trigram_features(df)
     df = get_ner_tags(df)
-    df = morph_features(df)
+    #df = morph_features(df)
     df = distance_features(df)
     df = extract_verb_type(df)
     df = get_path_from_token_to_predicate(df)
