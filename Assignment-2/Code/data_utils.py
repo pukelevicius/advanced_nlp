@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics import classification_report, precision_recall_fscore_support
+from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from scipy.sparse import hstack, vstack
@@ -108,48 +108,59 @@ def process_data(data, vectorizer, numeric_features):
     token_trigram_count = vectorizer.transform(data['token_trigram'])
     pos_bigram_count = vectorizer.transform(data['POS_bigram'])
     pos_trigram_count = vectorizer.transform(data['POS_trigram'])
-    auxilary_count = vectorizer.transform(data['is_auxilary'])
-    main_verb_count = vectorizer.transform(data['is_main_verb'])
-    path_to_predicate_count = vectorizer.transform(data['path_to_predicate'])
+    path_to_predicate_count = vectorizer.transform(data['path_to_predicate'].astype(str))
     
     X = hstack([token_count, lemma_count, pos_count, universal_pos_count, dep_label_count, dep_rel_count, space_count,
                 predicate_count, ner_count, data['is_token_predicate'].values.reshape(-1, 1),
                 token_bigram_count, token_trigram_count, pos_bigram_count, pos_trigram_count,
-                auxilary_count, main_verb_count, path_to_predicate_count, data[numeric_features].values])
+                path_to_predicate_count, data[numeric_features].values])
     
     return X
 
 
-def calculate_metrics(start_label, end_label, y_dev_encoded_array, y_pred):
+def calculate_metrics(y_true, y_pred, encoder):
     """
-    Calculate metrics for the classification task
-    For labels 0 and 1: is_token_argument (argument identification)
-    For labels 2 to 30: argument_label (argument classification)
+    Calculate precision, recall, and F1 scores separately for is_token_argument and argument_labels.
+    Provide aggregated scores using macro averages for each task individually.
+    
+    Parameters:
+    - y_true: The true labels, assumed to be in the same format as y_train/y_test used earlier.
+    - y_pred: The predicted labels, in the same format.
+    - encoder: The OneHotEncoder instance used for encoding the argument labels.
+    
+    Returns:
+    - Two pandas DataFrames: one for the argument identification task and one for the argument classification task.
     """
-    weighted_precision_sum = 0
-    weighted_recall_sum = 0
-    weighted_f1_sum = 0
-    total_support = 0
-    precisions = []
-    recalls = []
-    f1_scores = []
-
-    for i in range(start_label, end_label):
-        precision, recall, f1, support = precision_recall_fscore_support(y_dev_encoded_array[:, i], y_pred[:, i], average=None, zero_division=0)
-        for j in range(len(precision)):
-            weighted_precision_sum += precision[j] * support[j]
-            weighted_recall_sum += recall[j] * support[j]
-            weighted_f1_sum += f1[j] * support[j]
-            precisions.append(precision[j])
-            recalls.append(recall[j])
-            f1_scores.append(f1[j])
-        total_support += sum(support)
-
-    weighted_avg_precision = weighted_precision_sum / total_support if total_support > 0 else 0
-    weighted_avg_recall = weighted_recall_sum / total_support if total_support > 0 else 0
-    weighted_avg_f1 = weighted_f1_sum / total_support if total_support > 0 else 0
-
-    macro_avg_precision = np.mean(precisions)
-    macro_avg_recall = np.mean(recalls)
-    macro_avg_f1 = np.mean(f1_scores)
-    return weighted_avg_precision, weighted_avg_recall, weighted_avg_f1, macro_avg_precision, macro_avg_recall, macro_avg_f1
+    # Argument Identification Metrics
+    arg_id_metrics = {
+        'Metric': ['Precision', 'Recall', 'F1 Score'],
+        'Score': [
+            precision_score(y_true[:, 0], y_pred[:, 0], zero_division=0),
+            recall_score(y_true[:, 0], y_pred[:, 0], zero_division=0),
+            f1_score(y_true[:, 0], y_pred[:, 0], zero_division=0)
+        ]
+    }
+    arg_id_df = pd.DataFrame(arg_id_metrics)
+    
+    # Argument Classification Metrics
+    arg_class_precision = precision_score(y_true[:, 1:], y_pred[:, 1:], average=None, zero_division=0)
+    arg_class_recall = recall_score(y_true[:, 1:], y_pred[:, 1:], average=None, zero_division=0)
+    arg_class_f1 = f1_score(y_true[:, 1:], y_pred[:, 1:], average=None, zero_division=0)
+    
+    arg_class_metrics = pd.DataFrame({
+        'Label': encoder.categories_[0],
+        'Precision': arg_class_precision,
+        'Recall': arg_class_recall,
+        'F1 Score': arg_class_f1
+    })
+    
+    # Aggregated (macro) scores for argument classification
+    aggregated_class_metrics = pd.DataFrame([{
+        'Label': 'Macro Average',
+        'Precision': np.mean(arg_class_precision),
+        'Recall': np.mean(arg_class_recall),
+        'F1 Score': np.mean(arg_class_f1)
+    }])
+    arg_class_metrics = pd.concat([arg_class_metrics, aggregated_class_metrics], ignore_index=True)
+    
+    return arg_id_df, arg_class_metrics

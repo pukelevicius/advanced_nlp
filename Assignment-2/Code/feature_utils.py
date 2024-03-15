@@ -227,6 +227,3 @@ def get_path_from_token_to_predicate(df):
 
     df = df.groupby('sent_id', group_keys=False).apply(get_path).reset_index(drop=True)
     return df
-
-
-
